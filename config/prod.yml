@@ -1,0 +1,3 @@
+jwtSecret: ${ssm:/taller/prod/jwt-secret}
+jwtRefreshSecret: ${ssm:/taller/prod/jwt-refresh-secret}
+corsOrigins: https://CAMBIA-ESTE-DOMINIO.com

@@ -1,0 +1,5 @@
+# Valores SOLO para LocalStack (no son secretos reales).
+# jwtSecret debe ser IGUAL al del Gateway: el authorizer valida con él los tokens que firma Users.
+jwtSecret: local-secret
+jwtRefreshSecret: local-refresh-secret
+corsOrigins: http://localhost:3000

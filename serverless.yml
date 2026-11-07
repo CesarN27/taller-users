@@ -1,0 +1,138 @@
+service: taller-users
+frameworkVersion: '4'
+
+plugins:
+  - serverless-localstack
+
+custom:
+  config: ${file(./config/${sls:stage}.yml)}
+  authorizer:
+    type: CUSTOM
+    authorizerId:
+      Fn::ImportValue: taller-${sls:stage}-main-authorizer-id
+  localstack:
+    stages:
+      - local
+    host: http://localhost
+    edgePort: 4566
+    autostart: false
+
+provider:
+  name: aws
+  runtime: nodejs22.x
+  stage: ${opt:stage, 'develop'}
+  region: us-east-1
+  timeout: 15
+  apiGateway:
+    restApiId:
+      Fn::ImportValue: taller-${sls:stage}-main-rest-api-id
+    restApiRootResourceId:
+      Fn::ImportValue: taller-${sls:stage}-main-root-resource-id
+  environment:
+    STAGE: ${sls:stage}
+    USERS_TABLE: !Ref UsersTable
+    REFRESH_TOKENS_TABLE: !Ref RefreshTokensTable
+    JWT_SECRET: ${self:custom.config.jwtSecret}
+    JWT_REFRESH_SECRET: ${self:custom.config.jwtRefreshSecret}
+    CORS_ORIGINS: ${self:custom.config.corsOrigins}
+  iam:
+    role:
+      statements:
+        - Effect: Allow
+          Action:
+            - dynamodb:GetItem
+            - dynamodb:PutItem
+            - dynamodb:UpdateItem
+            - dynamodb:DeleteItem
+            - dynamodb:Query
+          Resource:
+            - !GetAtt UsersTable.Arn
+            - !Join ['/', [!GetAtt UsersTable.Arn, 'index/*']]
+            - !GetAtt RefreshTokensTable.Arn
+
+functions:
+  register:
+    handler: src/handlers/register.register
+    name: taller-${sls:stage}-users-register
+    events:
+      - http:
+          path: users/register
+          method: post
+          cors: true
+
+  login:
+    handler: src/handlers/login.login
+    name: taller-${sls:stage}-users-login
+    events:
+      - http:
+          path: users/login
+          method: post
+          cors: true
+
+  getUser:
+    handler: src/handlers/get-user.getUser
+    name: taller-${sls:stage}-users-getUser
+    events:
+      - http:
+          path: users/{id}
+          method: get
+          cors: true
+          authorizer: ${self:custom.authorizer}
+
+  updateUser:
+    handler: src/handlers/update-user.updateUser
+    name: taller-${sls:stage}-users-updateUser
+    events:
+      - http:
+          path: users/{id}
+          method: put
+          cors: true
+          authorizer: ${self:custom.authorizer}
+
+  deleteUser:
+    handler: src/handlers/delete-user.deleteUser
+    name: taller-${sls:stage}-users-deleteUser
+    events:
+      - http:
+          path: users/{id}
+          method: delete
+          cors: true
+          authorizer: ${self:custom.authorizer}
+
+resources:
+  Resources:
+    UsersTable:
+      Type: AWS::DynamoDB::Table
+      Properties:
+        TableName: taller-${sls:stage}-users
+        BillingMode: PAY_PER_REQUEST
+        AttributeDefinitions:
+          - AttributeName: userId
+            AttributeType: S
+          - AttributeName: email
+            AttributeType: S
+        KeySchema:
+          - AttributeName: userId
+            KeyType: HASH
+        GlobalSecondaryIndexes:
+          - IndexName: email-index
+            KeySchema:
+              - AttributeName: email
+                KeyType: HASH
+            Projection:
+              ProjectionType: ALL
+
+    RefreshTokensTable:
+      Type: AWS::DynamoDB::Table
+      Properties:
+        TableName: taller-${sls:stage}-refresh-tokens
+        BillingMode: PAY_PER_REQUEST
+        AttributeDefinitions:
+          - AttributeName: token
+            AttributeType: S
+        KeySchema:
+          - AttributeName: token
+            KeyType: HASH
+        TimeToLiveSpecification:
+          AttributeName: expiresAt
+          Enabled: true
